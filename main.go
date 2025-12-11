@@ -206,12 +206,12 @@ func (m model) View() string {
 	}
 
 	statsSection := lipgloss.JoinVertical(lipgloss.Left,
-		row("Battery Health", m.info.Health),
+		row("Condition", m.info.Condition), // e.g. "Normal"
 		row("Cycle Count", safeCycle),
+		row("Max Capacity", m.info.MaxCapacity), // e.g. "95%"
 		row("Temperature", fmt.Sprintf("%.1f°C", m.info.Temperature)),
-		row("Max Capacity", fmt.Sprintf("%d%%", m.info.MaxCapacity)),
 		lipgloss.NewStyle().Height(1).Render(""), // Spacer
-		row("Power Source", "USB-C Power Type"),  // Static for now, consistent with goal
+		row("Power Source", "USB-C Power Type"),  // Static for now
 		row("Wattage Input", safeWattage),
 		row("Serial Number", m.info.Serial),
 	)

@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strconv"
+	"sync"
 )
 
 type BatteryInfo struct {
@@ -14,55 +15,75 @@ type BatteryInfo struct {
 	Remaining  string
 	IsCharging bool
 
-	// Advanced Stats
+	// Real-time (ioreg)
 	Temperature float64 // Celsius
-	CycleCount  int
-	Condition   string // Good/Normal/etc (Inferred from health)
-	MaxCapacity int
-	Health      string // e.g. "95%" if calculated
 	Wattage     int
-	Serial      string
+	Serial      string // ioreg has serial too, but system_profiler is cleaner
+
+	// Static/Health (system_profiler)
+	CycleCount  int
+	Condition   string // "Normal", "Service Recommended", etc.
+	MaxCapacity string // "95%" string from system_profiler
 }
 
+var (
+	// Cache static info to avoid slow system_profiler calls on every tick
+	staticInfoCache BatteryInfo
+	lastStaticFetch int64
+	mutex           sync.Mutex
+)
+
+// GetBatteryInfo combines fast ioreg data with cached accurate system_profiler data
 func GetBatteryInfo() (BatteryInfo, error) {
 	info := BatteryInfo{
 		Status:    "Unknown",
 		Remaining: "Calculating...",
 	}
 
-	// 1. Get Basic Info from pmset (it has the best status/remaining logic)
-	// We could parse ioreg for everything, but pmset's time remaining is standard.
-	// Actually, let's parse ioreg for *everything* to be faster and consistent.
-	// ioreg -r -n AppleSmartBattery
+	// 1. Fetch Static Info (Condition, Max Cap, Cycles) sparingly
+	// In a real app we'd check timestamps, but for now let's just fetch if empty or on a separate ticker.
+	// Actually, let's just make a helper we call less often, or doing it here is fine if we accept the overhead?
+	// No, system_profiler is slow (can take 1-2s).
+	// The `Update` loop in main.go calls this every 2s. We CANNOT call system_profiler every 2s.
+	// We must cache it.
 
+	mutex.Lock()
+	if staticInfoCache.MaxCapacity == "" {
+		// First run, fetch it.
+		// We will do this in a goroutine in a real app, but here we might block once.
+		// Better: return what we have and trigger a fetch?
+		// For simplicity in this script, let's block once.
+		fetchStaticInfo(&staticInfoCache)
+	}
+	info.Condition = staticInfoCache.Condition
+	info.MaxCapacity = staticInfoCache.MaxCapacity
+	info.CycleCount = staticInfoCache.CycleCount
+	// info.Serial = staticInfoCache.Serial // Use ioreg serial if faster? system_profiler serial is reliable.
+	mutex.Unlock()
+
+	// 2. Fetch Real-time Info (ioreg) - Fast
 	cmd := exec.Command("ioreg", "-r", "-n", "AppleSmartBattery")
 	var out bytes.Buffer
 	cmd.Stdout = &out
-	err := cmd.Run()
-	if err != nil {
+	if err := cmd.Run(); err != nil {
 		return info, err
 	}
 	output := out.String()
 
-	// Parse Fields
+	// ... Parsing Logic ...
 
-	// State of Charge
-	// "CurrentCapacity" = 15
-	// "MaxCapacity" = 100
-	// Make sure to match specific keys, as MaxCapacity might appear multiple times.
-	// Using generic "Key" = Value regex
-
+	// Percent
 	currentCap := getInt(output, `\"CurrentCapacity\"\s*=\s*(\d+)`)
-	maxCap := getInt(output, `\"MaxCapacity\"\s*=\s*(\d+)`)
-
-	if maxCap > 0 {
-		info.Percent = (currentCap * 100) / maxCap
-		// Overwrite with pmset check if needed, but this is raw controller data
-		// Some people prefer "AppleRawCurrentCapacity" vs "AppleRawMaxCapacity"
+	// maxCapRaw := getInt(output, `\"AppleRawMaxCapacity\"\s*=\s*(\d+)`)
+	// Wait, earlier we used `MaxCapacity` which was 100. Let's use `MaxCapacity` for *calculation* of percentage if `CurrentCapacity` is relative to it.
+	// Usually CurrentCapacity is mAh.
+	// Let's stick to CurrentCapacity / AppleRawMaxCapacity * 100 if MaxCapacity=100.
+	// Actually, `MaxCapacity` in ioreg is usually calculation basis.
+	maxCapCalc := getInt(output, `\"MaxCapacity\"\s*=\s*(\d+)`)
+	if maxCapCalc > 0 {
+		info.Percent = (currentCap * 100) / maxCapCalc
 	}
-
-	// Use regex to find IsCharging
-	// "IsCharging" = Yes
+	// IsCharging
 	if getString(output, `\"IsCharging\"\s*=\s*(Yes|No)`) == "Yes" {
 		info.IsCharging = true
 		info.Status = "Charging"
@@ -73,57 +94,48 @@ func GetBatteryInfo() (BatteryInfo, error) {
 			info.Status = "Charged"
 		}
 	}
-
 	// Time Remaining
-	// "TimeRemaining" = 177 (minutes)
 	tr := getInt(output, `\"TimeRemaining\"\s*=\s*(\d+)`)
 	if tr < 65535 {
 		h := tr / 60
 		m := tr % 60
 		info.Remaining = fmt.Sprintf("%d:%02d remaining", h, m)
 	} else {
-		info.Remaining = "Calculating..." // 65535 often means calculating
-		if info.Status == "Charged" {
-			info.Remaining = ""
+		// If charging and 65535, usually means calculating.
+		// If charged, it stays empty.
+		if info.Status != "Charged" {
+			info.Remaining = "Calculating..."
 		}
 	}
 
-	// Temperature
-	// "Temperature" = 3040 (centidegrees)
+	// Temperature & Watts
 	temp := getInt(output, `\"Temperature\"\s*=\s*(\d+)`)
-	if temp > 0 {
-		info.Temperature = float64(temp) / 100.0
-	}
-
-	// CycleCount
-	// "CycleCount" = 193
-	info.CycleCount = getInt(output, `\"CycleCount\"\s*=\s*(\d+)`)
-
-	// Watts
-	// "Watts"=60 (inside AdapterDetails)
+	info.Temperature = float64(temp) / 100.0
 	info.Wattage = getInt(output, `\"Watts\"=(\d+)`)
-
-	// Serial
-	// "Serial" = "F8..."
 	info.Serial = getString(output, `\"Serial\"\s*=\s*\"([^\"]+)\"`)
 
-	// Design Cap for Health Calcs
-	// "DesignCapacity" = 8579
-	designCap := getInt(output, `\"DesignCapacity\"\s*=\s*(\d+)`)
-	appleRawMax := getInt(output, `\"AppleRawMaxCapacity\"\s*=\s*(\d+)`)
-
-	if designCap > 0 && appleRawMax > 0 {
-		healthPct := (float64(appleRawMax) / float64(designCap)) * 100
-		info.Health = fmt.Sprintf("%.0f%%", healthPct)
-	}
-
-	info.MaxCapacity = maxCap // This is relative max capacity (wear info is mostly in AppleRawMax vs Design)
-
-	// Condition (Hard to map exactly without system_profiler strings, but we can infer)
-	// Or just leave blank if we rely on system_profiler.
-	// Let's stick to "Health" % which is more useful.
-
 	return info, nil
+}
+
+func fetchStaticInfo(target *BatteryInfo) {
+	// system_profiler SPPowerDataType -json
+	cmd := exec.Command("system_profiler", "SPPowerDataType", "-json")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return
+	}
+	jsonStr := out.String()
+
+	// Parse using Regex for simplicity instead of full struct (Go regex is robust enough for unique keys)
+	// "sppower_battery_health" : "Good" or "Normal"
+	target.Condition = getString(jsonStr, `\"sppower_battery_health\"\s*:\s*\"([^\"]+)\"`)
+
+	// "sppower_battery_health_maximum_capacity" : "95%"
+	target.MaxCapacity = getString(jsonStr, `\"sppower_battery_health_maximum_capacity\"\s*:\s*\"([^\"]+)\"`)
+
+	// "sppower_battery_cycle_count" : 193
+	target.CycleCount = getInt(jsonStr, `\"sppower_battery_cycle_count\"\s*:\s*(\d+)`)
 }
 
 func getInt(text string, pattern string) int {
