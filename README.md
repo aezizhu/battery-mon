@@ -1,4 +1,4 @@
-# Battery Monitor TUI (Go Edition) 🔋
+# Chargetop 🔋
 
 A high-performance, single-binary Terminal User Interface (TUI) application for monitoring your macOS battery status. Built with Go and Bubbletea.
 
@@ -17,30 +17,30 @@ A high-performance, single-binary Terminal User Interface (TUI) application for 
 
 1.  Clone the repository:
     ```bash
-    git clone https://github.com/yourusername/battery-mon.git
-    cd battery-mon
+    git clone https://github.com/aezizhu/chargetop.git
+    cd chargetop
     ```
 
 2.  Build the binary:
     ```bash
-    go build -o battery-mon
+    go build -o chargetop
     ```
 
 3.  Run:
     ```bash
-    ./battery-mon
+    ./chargetop
     ```
 
 ### Method 2: Homebrew (Coming Soon)
 
 ```bash
-brew tap yourusername/battery-mon
-brew install battery-mon
+brew tap aezizhu/chargetop
+brew install chargetop
 ```
 
 ## Usage
 
-- **Run**: `./battery-mon`
+- **Run**: `./chargetop`
 - **Quit**: Press `q` or `Ctrl+C`
 - **Refresh**: Press `r`
 

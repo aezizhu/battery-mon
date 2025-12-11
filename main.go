@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/aezizhu/chargetop/battery"
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/sparkline"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/current/battery-mon/battery"
 )
 
 // Styles
@@ -182,7 +182,7 @@ func (m model) View() string {
 	if m.basic.Percent < 20 {
 		statusColor = danger
 	} else if m.basic.Percent < 50 {
-		statusColor = lipgloss.Color("220") // Yellowish
+		statusColor = lipgloss.AdaptiveColor{Light: "#FFD700", Dark: "#D4AF37"} // Gold/Yellow
 	}
 
 	// Left Column: Main Status + Graph

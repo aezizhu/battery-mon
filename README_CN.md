@@ -1,4 +1,4 @@
-# macOS 终端电池监控器 (Go 版) 🔋
+# Chargetop (macOS 终端电池监控器) 🔋
 
 这是一个高性能、单二进制文件的终端用户界面 (TUI) 应用程序，用于监控您的 macOS 电池状态。基于 Go 语言和 Bubbletea 框架构建。
 
@@ -17,30 +17,30 @@
 
 1.  克隆代码仓库:
     ```bash
-    git clone https://github.com/yourusername/battery-mon.git
-    cd battery-mon
+    git clone https://github.com/aezizhu/chargetop.git
+    cd chargetop
     ```
 
 2.  编译二进制文件:
     ```bash
-    go build -o battery-mon
+    go build -o chargetop
     ```
 
 3.  运行:
     ```bash
-    ./battery-mon
+    ./chargetop
     ```
 
 ### 方法 2: Homebrew (即将推出)
 
 ```bash
-brew tap yourusername/battery-mon
-brew install battery-mon
+brew tap aezizhu/chargetop
+brew install chargetop
 ```
 
 ## 使用说明
 
-- **启动**: `./battery-mon`
+- **启动**: `./chargetop`
 - **退出**: 按 `q` 键 或 `Ctrl+C`
 - **刷新**: 按 `r` 键
 
