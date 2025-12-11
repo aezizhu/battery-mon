@@ -7,7 +7,8 @@ import (
 	"github.com/aezizhu/chargetop/battery"
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/sparkline"
+
+	// "github.com/charmbracelet/bubbles/sparkline"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -89,8 +90,8 @@ type model struct {
 	basic    battery.BatteryInfo
 	advanced battery.AdvancedInfo
 
-	sparkModel sparkline.Model
-	history    []int
+	// sparkModel sparkline.Model
+	history []int
 
 	help help.Model
 	keys keyMap
@@ -103,19 +104,21 @@ type model struct {
 func initialModel() model {
 	b, _ := battery.GetBasicInfo()
 
-	s := sparkline.New(
-		sparkline.WithWidth(35),
-		sparkline.WithHeight(3),
-		sparkline.WithLabel("Charge History (60 min)"),
-		sparkline.WithLineColor(special),
-	)
+	/*
+		s := sparkline.New(
+			sparkline.WithWidth(35),
+			sparkline.WithHeight(3),
+			sparkline.WithLabel("Charge History (60 min)"),
+			sparkline.WithLineColor(special),
+		)
+	*/
 
 	return model{
-		basic:      b,
-		sparkModel: s,
-		history:    []int{b.Percent}, // Start with current
-		help:       help.New(),
-		keys:       keys,
+		basic: b,
+		// sparkModel: s,
+		history: []int{b.Percent}, // Start with current
+		help:    help.New(),
+		keys:    keys,
 	}
 }
 
@@ -157,7 +160,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(m.history) > 60 {
 			m.history = m.history[1:]
 		}
-		m.sparkModel.SetData(m.history)
+		// m.sparkModel.SetData(m.history)
 
 		return m, tickCmd()
 
@@ -199,13 +202,16 @@ func (m model) View() string {
 	statusText := lipgloss.NewStyle().Foreground(textMuted).Render(fmt.Sprintf("%s\n%s", m.basic.Status, m.basic.Remaining))
 
 	// Sparkline color update
-	m.sparkModel.Data = m.history // Refresh data safely
-	if m.basic.IsCharging {
-		m.sparkModel.LineColor = highlight
-	} else {
-		m.sparkModel.LineColor = statusColor
-	}
-	graphView := m.sparkModel.View()
+	// m.sparkModel.Data = m.history // Refresh data safely
+	/*
+		if m.basic.IsCharging {
+			m.sparkModel.LineColor = highlight
+		} else {
+			m.sparkModel.LineColor = statusColor
+		}
+		graphView := m.sparkModel.View()
+	*/
+	graphView := ""
 
 	leftCol := lipgloss.JoinVertical(
 		lipgloss.Left,
